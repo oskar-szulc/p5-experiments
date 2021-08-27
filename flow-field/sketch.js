@@ -1,3 +1,6 @@
+// pomysly
+// - morph z jednego flow field do drugiego
+
 let flowfield = {};
 let canvasWidth = 600;
 let canvasHeight = 600;
@@ -8,6 +11,9 @@ let grid = {
 };
 let t = 0;
 let linesConfig = [];
+let poissonPoints = []
+
+import { poissonSampling } from "./poisson.js";
 
 p5.disableFriendlyErrors = true;
 
@@ -41,6 +47,18 @@ function generateFlowField() {
   }
 }
 
+function generateFlowFieldPerlin() {
+  for (let x = -grid.width / 2; x < 1.5 * grid.width; x++) {
+    for (let y = -grid.height / 2; y < 1.5 * grid.height; y++) {
+      const scaled_x = x * 0.05
+      const scaled_y = y * 0.05
+
+      let noise_val = noise(scaled_x, scaled_y)
+      flowfield[normalizedPosition(x, y)] = map(noise_val, 0.0, 1.0, 0.0, 2 * PI);
+    }
+  }
+}
+
 function updateFlowField() {
   const step = millis() * 0.00001;
   for (let x = 0; x < grid.width; x++) {
@@ -56,39 +74,65 @@ function generateLines(numOfLines) {
     let seed = random();
     linesConfig.push(
       {
-        x: random(-200, canvasWidth + 200),
-        y: random(-200, canvasHeight + 200),
-        steps: 20,
-        samplingStep: 20,
+        x: random(0, canvasWidth),
+        y: random(0, canvasHeight),
+        steps: 15,// 50 + random(0, 20),
+        samplingStep: 100,
         seed,
       }
     )
   }
 }
 
-function setup() {
+function generateLinesForPoissonSamples(samples, limit = 0) {
+  const maxLines = limit > 0 ? Math.min(limit, samples.length) : samples.length;
+
+
+  for (let i = 0; i < maxLines; i++) {
+    let seed = random();
+    linesConfig.push(
+      {
+        x: samples[i].x,
+        y: samples[i].y,
+        steps: 15,// 50 + random(0, 20),
+        samplingStep: 100,
+        seed,
+      }
+    )
+  }
+}
+
+window.setup = function () {
   initSpace({
     outputWidth: 800,
     outputHeight: 800,
-    gridSize: 50
+    gridSize: 10
   });
   createCanvas(canvasWidth, canvasHeight);
   smooth();
 
-  generateFlowField();
-  generateLines(1000);
+  poissonPoints = poissonSampling(canvasWidth, canvasHeight, 2 * grid.size);
+
+  generateFlowFieldPerlin();
+  generateLinesForPoissonSamples(poissonPoints);
 }
 
-function draw() {
+window.draw = function () {
   colorMode(RGB);
   clear();
   background(0);
 
   drawFlowLines();
+  // drawPoissonPoints();
   // drawFlowAngles();
   // updateFlowField();
 }
 
+const drawPoissonPoints = () => {
+  poissonPoints.forEach(p => {
+    circle(p.x, p.y, 4);
+  })
+}
 
 const drawFlowLines = () => linesConfig.forEach(
   lineConfig => drawLineWithCurve(curveThroughField(lineConfig), lineConfig)
@@ -103,13 +147,13 @@ function curveThroughField(config) {
   let y = config.y;
 
   for (let i = 0; i < config.steps; i++) {
-    let gridX = floor(x / grid.size);
-    let gridY = floor(y / grid.size);
+    let gridX = Math.floor(x / grid.size);
+    let gridY = Math.floor(y / grid.size);
 
     const angle = flowfield[normalizedPosition(gridX, gridY)];
 
-    x = config.samplingStep * cos(angle) + x;
-    y = config.samplingStep * sin(angle) + y;
+    x = config.samplingStep * Math.cos(angle) + x;
+    y = config.samplingStep * Math.sin(angle) + y;
 
     points.push({ x, y })
   }
@@ -122,12 +166,12 @@ const drawLineWithCurve = (points, config) => {
 
   noFill();
 
-  strokeWeight(3 * config.seed);
+  strokeWeight(2 * config.seed);
   stroke(
-    (250 + config.seed * 50) % 360, //H
-    50, //53 + 20 * config.seed,           //S
+    (config.seed * 50),// * Math.sin((millis() * 0.001)), //H
+    53 + 20 * config.seed,           //S
     80,//50 + 100 * (1 - config.seed),    //B
-    100// * (1 - config.seed)          //A
+    1 - config.seed //A
   );
 
   beginShape();
